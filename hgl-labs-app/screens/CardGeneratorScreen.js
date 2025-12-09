@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,18 +15,25 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
+import Header from '../components/Header';
 import { getJobCounter, saveJobCounter, saveCard } from '../utils/storage';
+import { generateCertificatePDF } from '../utils/exportUtils';
 
 const ITEMS = [
   'Ring', 'Earring', 'Tops', 'Necklace', 'Chain', 'Bangle',
-  'Pendant', 'Bracelet', 'Nose Pin', 'Anklet', 'Other'
+  'Pendant', 'Bracelet', 'Nose Pin', 'Anklet', 'Mangalsutra', 'Coin', 'Other'
 ];
 
 const PURITY_OPTIONS = [
-  '24K (999)', '22K (916)', '18K (750)', '14K (585)'
+  { label: '24K (999)', value: '24K (999)' },
+  { label: '22K (916)', value: '22K (916)' },
+  { label: '18K (750)', value: '18K (750)' },
+  { label: '14K (585)', value: '14K (585)' },
+  { label: 'Silver 999', value: 'Silver 999' },
+  { label: 'Silver 925', value: 'Silver 925' },
 ];
 
-const TYPE_OPTIONS = ['LS / FS', 'LS', 'FS', 'Both'];
+const TYPE_OPTIONS = ['LS / FS', 'LS Only', 'FS Only', 'Both'];
 
 const QR_LINK = 'https://hgl-labs.com/verify/';
 
@@ -43,6 +50,7 @@ export default function CardGeneratorScreen() {
   const [backPhoto, setBackPhoto] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [cardData, setCardData] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadJobCounter();
@@ -69,6 +77,16 @@ export default function CardGeneratorScreen() {
   const generateCard = async () => {
     const itemValue = selectedItem === 'Other' ? customItem.trim() : selectedItem;
     
+    if (!itemValue) {
+      Alert.alert('Required', 'Please select an item');
+      return;
+    }
+    
+    if (!purity) {
+      Alert.alert('Required', 'Please select purity');
+      return;
+    }
+
     const jobNo = `HGL${String(jobCounter).padStart(5, '0')}`;
     const today = new Date().toLocaleDateString('en-IN');
 
@@ -79,7 +97,7 @@ export default function CardGeneratorScreen() {
       item: itemValue || '-',
       purity: purity || '-',
       weight: weight || '-',
-      pieces: pieces || '-',
+      pieces: pieces || '1',
       type: type || '-',
       description: description || '-',
       frontPhoto,
@@ -99,11 +117,22 @@ export default function CardGeneratorScreen() {
       pieces: data.pieces,
       type: data.type,
       desc: data.description,
+      status: 'Issued',
     };
 
     await saveCard(cardRecord);
     await saveJobCounter(jobCounter);
     setJobCounter(jobCounter + 1);
+  };
+
+  const handleExportPDF = async () => {
+    if (!cardData) return;
+    setExporting(true);
+    const success = await generateCertificatePDF(cardData);
+    setExporting(false);
+    if (!success) {
+      Alert.alert('Export Error', 'Failed to generate PDF');
+    }
   };
 
   const closePreview = () => {
@@ -125,13 +154,20 @@ export default function CardGeneratorScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Hindustan Gemological Laboratory</Text>
-          <Text style={styles.subtitle}>Card Generator with QR</Text>
+        <Header subtitle="Certificate Generator" />
+
+        <View style={styles.jobBadge}>
+          <Ionicons name="document-text" size={18} color="#b8860b" />
+          <Text style={styles.jobBadgeText}>Next Job: {`HGL${String(jobCounter).padStart(5, '0')}`}</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Select Item</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="diamond" size={20} color="#b8860b" />
+            <Text style={styles.cardTitle}>Article Details</Text>
+          </View>
+
+          <Text style={styles.label}>Select Item <Text style={styles.required}>*</Text></Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
             {ITEMS.map((item) => (
               <TouchableOpacity
@@ -149,44 +185,47 @@ export default function CardGeneratorScreen() {
           {selectedItem === 'Other' && (
             <TextInput
               style={styles.input}
-              placeholder="Custom item name"
+              placeholder="Specify item name"
               value={customItem}
               onChangeText={setCustomItem}
+              placeholderTextColor="#999"
             />
           )}
 
-          <Text style={styles.label}>Select Purity</Text>
+          <Text style={styles.label}>Select Purity <Text style={styles.required}>*</Text></Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
             {PURITY_OPTIONS.map((p) => (
               <TouchableOpacity
-                key={p}
-                style={[styles.chip, purity === p && styles.chipSelected]}
-                onPress={() => setPurity(p)}
+                key={p.value}
+                style={[styles.chip, purity === p.value && styles.chipSelected]}
+                onPress={() => setPurity(p.value)}
               >
-                <Text style={[styles.chipText, purity === p && styles.chipTextSelected]}>{p}</Text>
+                <Text style={[styles.chipText, purity === p.value && styles.chipTextSelected]}>{p.label}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           <View style={styles.row}>
             <View style={styles.halfInput}>
-              <Text style={styles.label}>Weight (g)</Text>
+              <Text style={styles.label}>Gross Weight (g)</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Weight"
+                placeholder="0.00"
                 value={weight}
                 onChangeText={setWeight}
                 keyboardType="decimal-pad"
+                placeholderTextColor="#999"
               />
             </View>
             <View style={styles.halfInput}>
-              <Text style={styles.label}>Pieces</Text>
+              <Text style={styles.label}>No. of Pieces</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Pieces"
+                placeholder="1"
                 value={pieces}
                 onChangeText={setPieces}
                 keyboardType="numeric"
+                placeholderTextColor="#999"
               />
             </View>
           </View>
@@ -205,8 +244,11 @@ export default function CardGeneratorScreen() {
           </ScrollView>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Photos</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="camera" size={20} color="#b8860b" />
+            <Text style={styles.cardTitle}>Item Photos</Text>
+          </View>
           
           <View style={styles.photoRow}>
             <TouchableOpacity style={styles.photoBtn} onPress={() => pickImage(setFrontPhoto)}>
@@ -214,8 +256,8 @@ export default function CardGeneratorScreen() {
                 <Image source={{ uri: frontPhoto }} style={styles.photoPreview} />
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Ionicons name="camera" size={32} color="#b8860b" />
-                  <Text style={styles.photoLabel}>Front Photo</Text>
+                  <Ionicons name="image" size={36} color="#b8860b" />
+                  <Text style={styles.photoLabel}>Front View</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -225,29 +267,33 @@ export default function CardGeneratorScreen() {
                 <Image source={{ uri: backPhoto }} style={styles.photoPreview} />
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Ionicons name="camera" size={32} color="#b8860b" />
-                  <Text style={styles.photoLabel}>Back Photo</Text>
+                  <Ionicons name="image" size={36} color="#b8860b" />
+                  <Text style={styles.photoLabel}>Back View</Text>
                 </View>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Description</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="create" size={20} color="#b8860b" />
+            <Text style={styles.cardTitle}>Description</Text>
+          </View>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Enter description"
+            placeholder="Item description, special features, stone details, etc."
             value={description}
             onChangeText={setDescription}
             multiline
             numberOfLines={3}
+            placeholderTextColor="#999"
           />
         </View>
 
         <TouchableOpacity style={styles.generateBtn} onPress={generateCard}>
-          <Ionicons name="qr-code" size={20} color="#fff" />
-          <Text style={styles.generateBtnText}>Generate Card</Text>
+          <Ionicons name="qr-code" size={22} color="#fff" />
+          <Text style={styles.generateBtnText}>Generate Certificate</Text>
         </TouchableOpacity>
 
         <View style={styles.bottomPadding} />
@@ -255,62 +301,111 @@ export default function CardGeneratorScreen() {
 
       <Modal visible={showPreview} animationType="slide" onRequestClose={closePreview}>
         <ScrollView style={styles.previewContainer}>
-          <View style={styles.cardPreview}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.hallmark}>HGL HALLMARKED</Text>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle}>Certificate Preview</Text>
+            <TouchableOpacity onPress={closePreview} style={styles.closeIconBtn}>
+              <Ionicons name="close" size={28} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.certificate}>
+            <View style={styles.certHeader}>
+              <Text style={styles.certCompany}>HINDUSTAN GEMOLOGICAL LABORATORY</Text>
+              <Text style={styles.certTagline}>Accurate. Confidential. Integrity</Text>
+              <View style={styles.hallmarkBadge}>
+                <Ionicons name="shield-checkmark" size={16} color="#fff" />
+                <Text style={styles.hallmarkText}>HGL HALLMARKED</Text>
+              </View>
             </View>
 
-            <View style={styles.cardContent}>
-              <View style={styles.cardRow}>
-                <Text style={styles.cardLabel}>Job No:</Text>
-                <Text style={styles.cardValue}>{cardData?.jobNo}</Text>
-                <Text style={styles.cardLabel}>Date:</Text>
-                <Text style={styles.cardValue}>{cardData?.date}</Text>
+            <View style={styles.certBody}>
+              <View style={styles.certRow}>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Job Number</Text>
+                  <Text style={styles.certValue}>{cardData?.jobNo}</Text>
+                </View>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Date of Issue</Text>
+                  <Text style={styles.certValue}>{cardData?.date}</Text>
+                </View>
               </View>
 
-              <View style={styles.cardRow}>
-                <Text style={styles.cardLabel}>Article:</Text>
-                <Text style={styles.cardValue}>{cardData?.item}</Text>
-                <Text style={[styles.cardValue, styles.goldText]}>{cardData?.purity}</Text>
+              <View style={styles.certDivider} />
+
+              <View style={styles.certRow}>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Article</Text>
+                  <Text style={styles.certValue}>{cardData?.item}</Text>
+                </View>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Purity</Text>
+                  <Text style={[styles.certValue, styles.purityValue]}>{cardData?.purity}</Text>
+                </View>
               </View>
 
-              <View style={styles.cardRow}>
-                <Text style={styles.cardLabel}>Gross Wt:</Text>
-                <Text style={styles.cardValue}>{cardData?.weight} g</Text>
-                <Text style={styles.cardLabel}>Pcs:</Text>
-                <Text style={styles.cardValue}>{cardData?.pieces}</Text>
-                <Text style={styles.cardLabel}>Marking:</Text>
-                <Text style={styles.cardValue}>{cardData?.type}</Text>
+              <View style={styles.certRow}>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Gross Weight</Text>
+                  <Text style={styles.certValue}>{cardData?.weight} g</Text>
+                </View>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Pieces</Text>
+                  <Text style={styles.certValue}>{cardData?.pieces}</Text>
+                </View>
+                <View style={styles.certField}>
+                  <Text style={styles.certLabel}>Marking</Text>
+                  <Text style={styles.certValue}>{cardData?.type}</Text>
+                </View>
               </View>
 
-              <View style={styles.photoContainer}>
-                {cardData?.frontPhoto && (
-                  <Image source={{ uri: cardData.frontPhoto }} style={styles.cardPhoto} />
-                )}
-                {cardData?.backPhoto && (
-                  <Image source={{ uri: cardData.backPhoto }} style={styles.cardPhoto} />
-                )}
-              </View>
+              {(cardData?.frontPhoto || cardData?.backPhoto) && (
+                <View style={styles.photoContainer}>
+                  {cardData?.frontPhoto && (
+                    <Image source={{ uri: cardData.frontPhoto }} style={styles.certPhoto} />
+                  )}
+                  {cardData?.backPhoto && (
+                    <Image source={{ uri: cardData.backPhoto }} style={styles.certPhoto} />
+                  )}
+                </View>
+              )}
 
-              <Text style={styles.cardLabel}>Description:</Text>
-              <Text style={styles.cardDescription}>{cardData?.description}</Text>
+              {cardData?.description && cardData.description !== '-' && (
+                <>
+                  <View style={styles.certDivider} />
+                  <Text style={styles.certLabel}>Description</Text>
+                  <Text style={styles.certDescription}>{cardData?.description}</Text>
+                </>
+              )}
 
-              <View style={styles.qrContainer}>
-                {cardData?.qrValue && (
-                  <QRCode value={cardData.qrValue} size={100} />
-                )}
+              <View style={styles.qrSection}>
+                <View style={styles.qrBox}>
+                  {cardData?.qrValue && (
+                    <QRCode value={cardData.qrValue} size={100} />
+                  )}
+                </View>
+                <Text style={styles.qrText}>Scan to verify authenticity</Text>
               </View>
+            </View>
 
-              <View style={styles.cardFooter}>
-                <Text style={styles.footerText}>Hindustan Gemological Laboratory - Chennai</Text>
-                <Text style={styles.footerText}>+91 44 48553527 | info@hgl-labs.com | www.hgl-labs.com</Text>
-              </View>
+            <View style={styles.certFooter}>
+              <Text style={styles.footerText}>www.hgl-labs.com | info@hgl-labs.com</Text>
+              <Text style={styles.footerText}>+91 44 48553527 | Chennai, India</Text>
             </View>
           </View>
 
           <View style={styles.previewActions}>
-            <TouchableOpacity style={styles.closeBtn} onPress={closePreview}>
-              <Text style={styles.closeBtnText}>Close & Create New</Text>
+            <TouchableOpacity 
+              style={[styles.exportBtn, exporting && styles.exportBtnDisabled]} 
+              onPress={handleExportPDF}
+              disabled={exporting}
+            >
+              <Ionicons name="download" size={20} color="#fff" />
+              <Text style={styles.exportBtnText}>{exporting ? 'Exporting...' : 'Export as PDF'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.newBtn} onPress={closePreview}>
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.newBtnText}>Create New Certificate</Text>
             </TouchableOpacity>
           </View>
 
@@ -324,83 +419,101 @@ export default function CardGeneratorScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f5f6fa',
   },
   scrollView: {
     flex: 1,
-    padding: 15,
   },
-  header: {
+  jobBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center',
+    backgroundColor: '#fff8e7',
+    marginHorizontal: 15,
+    marginTop: 15,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f0e0c0',
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  jobBadgeText: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#b8860b',
-    textAlign: 'center',
+    marginLeft: 8,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
-  },
-  section: {
+  card: {
     backgroundColor: '#fff',
-    padding: 15,
+    marginHorizontal: 15,
+    marginTop: 15,
     borderRadius: 12,
-    marginBottom: 15,
-    borderWidth: 2,
-    borderColor: '#b8860b',
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#b8860b',
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 15,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginLeft: 10,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#333',
+    color: '#555',
     marginBottom: 8,
     marginTop: 10,
   },
+  required: {
+    color: '#e74c3c',
+  },
   input: {
-    borderWidth: 1,
-    borderColor: '#b8860b',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    backgroundColor: '#fafafa',
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
   },
   chipScroll: {
-    marginBottom: 10,
+    marginBottom: 5,
   },
   chip: {
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#eee',
-    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 25,
     marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
   },
   chipSelected: {
     backgroundColor: '#b8860b',
     borderColor: '#b8860b',
   },
   chipText: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: 13,
+    color: '#555',
+    fontWeight: '500',
   },
   chipTextSelected: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',
@@ -412,27 +525,28 @@ const styles = StyleSheet.create({
   photoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
   photoBtn: {
     flex: 1,
-    height: 150,
+    height: 140,
     borderWidth: 2,
-    borderColor: '#b8860b',
+    borderColor: '#e0e0e0',
     borderRadius: 12,
     borderStyle: 'dashed',
     overflow: 'hidden',
+    backgroundColor: '#fafafa',
   },
   photoPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   },
   photoLabel: {
-    marginTop: 5,
+    marginTop: 8,
     color: '#b8860b',
     fontWeight: '600',
+    fontSize: 13,
   },
   photoPreview: {
     width: '100%',
@@ -444,110 +558,208 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#b8860b',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 10,
+    marginHorizontal: 15,
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#b8860b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   generateBtnText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
+    fontWeight: '700',
+    marginLeft: 10,
   },
   previewContainer: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
-    padding: 15,
+    backgroundColor: '#f5f6fa',
   },
-  cardPreview: {
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
     backgroundColor: '#fff',
-    borderRadius: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  previewTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+  },
+  closeIconBtn: {
+    padding: 5,
+  },
+  certificate: {
+    backgroundColor: '#fff',
+    margin: 15,
+    borderRadius: 16,
     borderWidth: 3,
     borderColor: '#b8860b',
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  cardHeader: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 3,
-    borderBottomColor: '#b8860b',
+  certHeader: {
+    backgroundColor: '#b8860b',
+    padding: 25,
     alignItems: 'center',
   },
-  hallmark: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#b8860b',
+  certCompany: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 1,
   },
-  cardContent: {
-    padding: 20,
+  certTagline: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    fontStyle: 'italic',
+    marginTop: 5,
   },
-  cardRow: {
+  hallmarkBadge: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 10,
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 12,
   },
-  cardLabel: {
-    fontWeight: 'bold',
+  hallmarkText: {
+    color: '#fff',
+    fontWeight: '700',
+    marginLeft: 6,
+    fontSize: 13,
+  },
+  certBody: {
+    padding: 20,
+  },
+  certRow: {
+    flexDirection: 'row',
+    marginBottom: 15,
+  },
+  certField: {
+    flex: 1,
+  },
+  certLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  certValue: {
+    fontSize: 15,
     color: '#333',
-    marginRight: 5,
+    fontWeight: '600',
   },
-  cardValue: {
-    color: '#333',
-    marginRight: 15,
-  },
-  goldText: {
+  purityValue: {
     color: '#b8860b',
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  certDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 15,
   },
   photoContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
+    gap: 12,
     marginVertical: 15,
   },
-  cardPhoto: {
-    width: '45%',
-    height: 150,
-    borderRadius: 8,
+  certPhoto: {
+    width: 130,
+    height: 100,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
   },
-  cardDescription: {
-    color: '#333',
+  certDescription: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
     marginTop: 5,
-    marginBottom: 15,
   },
-  qrContainer: {
-    alignItems: 'flex-end',
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  cardFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#ccc',
-    paddingTop: 15,
+  qrSection: {
     alignItems: 'center',
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+  },
+  qrBox: {
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  qrText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#666',
+  },
+  certFooter: {
+    backgroundColor: '#f5f5f5',
+    padding: 15,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
   footerText: {
-    fontSize: 12,
-    color: '#555',
-    textAlign: 'center',
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
   },
   previewActions: {
-    marginTop: 20,
+    paddingHorizontal: 15,
+    gap: 12,
   },
-  closeBtn: {
-    backgroundColor: '#777',
-    padding: 15,
-    borderRadius: 8,
+  exportBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0066b3',
+    padding: 15,
+    borderRadius: 12,
   },
-  closeBtnText: {
+  exportBtnDisabled: {
+    backgroundColor: '#999',
+  },
+  exportBtnText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  newBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    padding: 15,
+    borderRadius: 12,
+  },
+  newBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   bottomPadding: {
-    height: 30,
+    height: 40,
   },
 });
