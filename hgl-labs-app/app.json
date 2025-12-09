@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "HGL Labs",
+    "slug": "hgl-labs-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#b8860b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hgllabs.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#b8860b"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.hgllabs.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    }
+  }
+}
